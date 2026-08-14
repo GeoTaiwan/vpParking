@@ -54,7 +54,7 @@ export default async function handler(req, res) {
         const dynamicStatusMap = {};
         dynamicList.forEach(item => {
             if (item.ParkingSpotID) {
-                // 取 SpotStatus (1:可停空位, 2:已被停滿)
+                // 取 SpotStatus (1:可停空位, 2:已被停滿) [1:'使用中',2:'空位',3:'已預約',254:'其他',255:'未知']
                 dynamicStatusMap[item.ParkingSpotID] = item.SpotStatus;
             }
         });
@@ -65,7 +65,7 @@ export default async function handler(req, res) {
             return {
                 ...space,
                 // 若找不到動態狀態，預設為 0 (未知狀態) 以利前端判斷
-                SpotStatus: dynamicStatusMap[id] ?? 0
+                SpotStatus: dynamicStatusMap[id] ?? 255
             };
         });
 

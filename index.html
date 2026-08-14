@@ -14,9 +14,8 @@
     <style>
         body { 
             background-color: #f8f9fa; 
-            overflow-x: hidden; /* 防止手機橫向滾動 */
+            overflow-x: hidden;
         }
-        /* 將地圖設定為佔滿剩餘畫面，呈現 App 般的體驗 */
         #map-container {
             height: calc(100vh - 180px); 
             width: 100%;
@@ -26,8 +25,6 @@
             z-index: 1;
         }
         #loading { display: none; }
-        
-        /* 自訂按鈕陰影與點擊效果 */
         .btn-custom {
             transition: transform 0.1s ease-in-out;
         }
@@ -60,7 +57,7 @@
         <!-- 結果統計文字 -->
         <div class="d-flex justify-content-between align-items-center mb-2 px-1 d-none" id="result-summary-container">
             <span class="text-secondary fw-bold" id="result-summary"></span>
-            <small class="text-muted">🟢空位 🔴佔用</small>
+            <small class="text-muted">🟢空位 🔴使用中 🟡預約</small>
         </div>
         
         <!-- 地圖顯示區 -->
@@ -94,7 +91,7 @@
 
             if (!map) {
                 map = L.map('map-container', { zoomControl: false }).setView([lat, lon], 17);
-                L.control.zoom({ position: 'bottomright' }).addTo(map); // 將縮放按鈕移到右下角便於單手操作
+                L.control.zoom({ position: 'bottomright' }).addTo(map);
                 
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '&copy; OpenStreetMap'
@@ -106,10 +103,10 @@
                 map.setView([lat, lon], 17);
             }
 
-            // 使用者定位點改為藍色，與車位做出區隔
+            // 使用者定位點 (藍色)
             const userMarker = L.circleMarker([lat, lon], {
-                color: '#0d6efd',     // 藍色邊框
-                fillColor: '#9ec5fe', // 淺藍填充
+                color: '#0d6efd',
+                fillColor: '#9ec5fe',
                 fillOpacity: 1,
                 weight: 3,
                 radius: 8
@@ -152,7 +149,7 @@
                 
                 const mergedData = await response.json();
 
-                // 3. 收集所有車位並統計
+                // 3. 收集所有車位並統計 (2 代表空位)
                 let allNearbySpots = [];
                 let emptyCount = 0;
 
@@ -163,7 +160,8 @@
                         const distance = getDistance(userLat, userLon, spotLat, spotLon);
                         
                         if (distance <= searchRadius) {
-                            if (spot.SpotStatus === 1) emptyCount++;
+                            // 💡 修正 1：依照 Schema，2 代表空位
+                            if (spot.SpotStatus === 2) emptyCount++;
                             allNearbySpots.push({
                                 id: spot.ParkingSpotID,
                                 distance: distance,
@@ -179,37 +177,54 @@
                 summary.innerText = `找到 ${emptyCount} 個空車位 (共 ${allNearbySpots.length} 格)`;
                 summaryContainer.classList.remove('d-none');
 
-                // 5. 繪製圓圈標記
+                // 5. 繪製圓圈標記 (依照新 Schema 定義顏色與文字)
                 allNearbySpots.forEach(spot => {
                     let markerColor, markerFillColor, statusText, navButtonHtml;
                     const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lon}`;
 
-                    // 判斷車位狀態給予不同顏色與彈出內容
-                    if (spot.status === 1) {
-                        markerColor = '#198754';     // 綠色
-                        markerFillColor = '#d1e7dd';
-                        statusText = '<span class="text-success fw-bold">可停空位</span>';
-                        navButtonHtml = `
-                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-success w-100 shadow-sm mt-2">
-                                🚗 導航前往
-                            </a>`;
-                    } else if (spot.status === 2) {
-                        markerColor = '#dc3545';     // 紅色
-                        markerFillColor = '#f8d7da';
-                        statusText = '<span class="text-danger fw-bold">已佔用</span>';
-                        // 已佔用不強制隱藏導航，但改為次要按鈕樣式
-                        navButtonHtml = `
-                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
-                                路線參考
-                            </a>`;
-                    } else {
-                        markerColor = '#6c757d';     // 灰色 (未知狀態)
-                        markerFillColor = '#e2e3e5';
-                        statusText = '<span class="text-secondary fw-bold">狀態未知</span>';
-                        navButtonHtml = `
-                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
-                                路線參考
-                            </a>`;
+                    // 💡 修正 2：對應 [1:'使用中', 2:'空位', 3:'已預約', 254:'其他', 255:'未知']
+                    switch (spot.status) {
+                        case 2: // 空位
+                            markerColor = '#198754';     // 綠色
+                            markerFillColor = '#d1e7dd';
+                            statusText = '<span class="text-success fw-bold">可停空位</span>';
+                            navButtonHtml = `
+                                <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-success w-100 shadow-sm mt-2">
+                                    🚗 導航前往
+                                </a>`;
+                            break;
+
+                        case 1: // 使用中
+                            markerColor = '#dc3545';     // 紅色
+                            markerFillColor = '#f8d7da';
+                            statusText = '<span class="text-danger fw-bold">使用中</span>';
+                            navButtonHtml = `
+                                <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                                    路線參考
+                                </a>`;
+                            break;
+
+                        case 3: // 已預約
+                            markerColor = '#ffc107';     // 黃色/橘色
+                            markerFillColor = '#fff3cd';
+                            statusText = '<span class="text-warning fw-bold text-dark">已預約</span>';
+                            navButtonHtml = `
+                                <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                                    路線參考
+                                </a>`;
+                            break;
+
+                        case 254: // 其他
+                        case 255: // 未知
+                        default:
+                            markerColor = '#6c757d';     // 灰色
+                            markerFillColor = '#e2e3e5';
+                            statusText = '<span class="text-secondary fw-bold">狀態未知</span>';
+                            navButtonHtml = `
+                                <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                                    路線參考
+                                </a>`;
+                            break;
                     }
 
                     // 氣泡框 HTML 結構
@@ -228,13 +243,13 @@
                         fillColor: markerFillColor,
                         fillOpacity: 0.9,
                         weight: 2,
-                        radius: 7 // 圓圈大小
+                        radius: 7
                     }).bindPopup(popupContent);
 
                     markersLayer.addLayer(marker);
                 });
 
-                // 自動縮放地圖以包含所有標記
+                // 自動縮放地圖
                 if (allNearbySpots.length > 0) {
                     const bounds = L.latLngBounds(allNearbySpots.map(s => [s.lat, s.lon]));
                     bounds.extend([userLat, userLon]);

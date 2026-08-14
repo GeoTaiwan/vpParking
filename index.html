@@ -1,39 +1,206 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>附近路邊停車位查詢</title>
-
-  <!-- 1. 載入 Leaflet 的 CSS (必須放在前面) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  
-  <style>
-    /* 確保網頁沒有多餘邊距，讓地圖能填滿畫面 */
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>附近空車位地圖與導航</title>
+    <!-- 引入 Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     
-    /* 2. 這是非常關鍵的「地圖容器」，必須設定高度！ */
-    #map {
-      height: 100vh; /* 填滿整個視窗高度 */
-      width: 100%;
-    }
-  </style>
+    <!-- 引入 Leaflet 地圖 CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { background-color: #f8f9fa; }
+        /* 設定地圖容器的高度與樣式 */
+        #map-container {
+            height: 65vh; 
+            width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: none; /* 初始隱藏，讀取完才顯示 */
+            z-index: 1;
+        }
+        #loading { display: none; }
+    </style>
 </head>
 <body>
+    <div class="container my-4">
+        <h2 class="text-center mb-4 fw-bold text-primary">附近空車位地圖與導航</h2>
+        
+        <div class="text-center mb-4">
+            <button id="findParkingBtn" class="btn btn-primary btn-lg px-4 rounded-pill shadow-sm">
+                📍 掃描附近空車位 (500公尺內)
+            </button>
+        </div>
 
-  <!-- 3. 地圖會被渲染在這個 div 裡面 -->
-  <div id="map"></div>
+        <!-- 載入中提示 -->
+        <div id="loading" class="text-center mb-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">載入中...</span>
+            </div>
+            <p class="mt-2 text-muted fw-bold">正在定位並搜尋即時車位，請稍候...</p>
+        </div>
 
-  <!-- 4. 載入 Leaflet 的 JavaScript (必須放在 CSS 之後) -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  
-  <!-- 5. 載入你自己寫的邏輯 (這支檔案稍後建立) -->
-  <script src="script.js"></script>
-  
+        <!-- 錯誤訊息顯示區 -->
+        <div id="error-message" class="alert alert-danger d-none shadow-sm" role="alert"></div>
+
+        <!-- 結果統計文字 -->
+        <h5 class="mb-3 text-center text-secondary d-none" id="result-summary"></h5>
+        
+        <!-- 地圖顯示區 -->
+        <div id="map-container"></div>
+    </div>
+
+    <!-- 引入 Leaflet 地圖 JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 全域變數用來儲存地圖實例
+        let map = null;
+        let markersLayer = new L.LayerGroup();
+
+        // 計算兩點經緯度距離 (Haversine 公式)
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return Math.round(R * c); 
+        }
+
+        // 初始化或重設地圖
+        function initMap(lat, lon) {
+            document.getElementById('map-container').style.display = 'block';
+
+            if (!map) {
+                // 首次建立地圖
+                map = L.map('map-container').setView([lat, lon], 16);
+                
+                // 載入 OpenStreetMap 免費圖資
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(map);
+
+                markersLayer.addTo(map);
+            } else {
+                // 如果地圖已存在，清除舊標記並重新定位
+                markersLayer.clearLayers();
+                map.setView([lat, lon], 16);
+            }
+
+            // 標示使用者的目前位置
+            const userMarker = L.circleMarker([lat, lon], {
+                color: '#dc3545',
+                fillColor: '#f8d7da',
+                fillOpacity: 0.8,
+                radius: 8
+            }).bindPopup('<b>📍 您的所在位置</b>').openPopup();
+            
+            markersLayer.addLayer(userMarker);
+        }
+
+        document.getElementById('findParkingBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('findParkingBtn');
+            const loading = document.getElementById('loading');
+            const errorMsg = document.getElementById('error-message');
+            const summary = document.getElementById('result-summary');
+            const mapContainer = document.getElementById('map-container');
+
+            // UI 狀態切換
+            btn.disabled = true;
+            loading.style.display = 'block';
+            errorMsg.classList.add('d-none');
+            summary.classList.add('d-none');
+            if(map) markersLayer.clearLayers();
+
+            try {
+                // 1. 取得 GPS
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true, timeout: 10000
+                    });
+                });
+                const userLat = position.coords.latitude;
+                const userLon = position.coords.longitude;
+                const searchRadius = 500;
+
+                // 初始化地圖視角
+                initMap(userLat, userLon);
+
+                // 2. 呼叫後端 API
+                const apiUrl = `/api/spotParking?lat=${userLat}&lon=${userLon}&radius=${searchRadius}&city=Kaohsiung`;
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error(`伺服器回應錯誤 (${response.status})`);
+                
+                const mergedData = await response.json();
+
+                // 3. 篩選資料並記錄經緯度
+                let availableSpots = [];
+                mergedData.forEach(spot => {
+                    if (spot.SpotStatus === 1 && spot.Position) {
+                        const spotLat = spot.Position.PositionLat;
+                        const spotLon = spot.Position.PositionLon;
+                        const distance = getDistance(userLat, userLon, spotLat, spotLon);
+                        
+                        if (distance <= searchRadius) {
+                            availableSpots.push({
+                                id: spot.ParkingSpotID,
+                                distance: distance,
+                                lat: spotLat,
+                                lon: spotLon
+                            });
+                        }
+                    }
+                });
+
+                // 4. 更新文字統計
+                summary.innerText = `在您半徑 ${searchRadius} 公尺內，共找到 ${availableSpots.length} 個空車位`;
+                summary.classList.remove('d-none');
+
+                // 5. 將車位繪製到地圖上
+                availableSpots.forEach(spot => {
+                    // 產生 Google Maps 導航網址 (帶入終點經緯度)
+                    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lon}`;
+
+                    // 設計氣泡框內容
+                    const popupContent = `
+                        <div class="text-center p-1" style="min-width: 140px;">
+                            <h6 class="fw-bold mb-1 text-primary">車位編號: ${spot.id}</h6>
+                            <p class="mb-2 text-secondary small">距離: ${spot.distance} 公尺</p>
+                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-success w-100 shadow-sm">
+                                🚗 導航 Kia Stonic 前往
+                            </a>
+                        </div>
+                    `;
+
+                    // 加入標記
+                    const marker = L.marker([spot.lat, spot.lon]).bindPopup(popupContent);
+                    markersLayer.addLayer(marker);
+                });
+
+                // 自動縮放地圖以包含所有標記
+                if (availableSpots.length > 0) {
+                    const bounds = L.latLngBounds(availableSpots.map(s => [s.lat, s.lon]));
+                    bounds.extend([userLat, userLon]); // 把使用者位置也包含進去
+                    map.fitBounds(bounds, { padding: [30, 30] });
+                }
+
+            } catch (error) {
+                console.error(error);
+                errorMsg.innerText = `發生錯誤：${error.message} (請確認定位權限或 API 狀態)`;
+                errorMsg.classList.remove('d-none');
+                mapContainer.style.display = 'none';
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+    </script>
 </body>
 </html>

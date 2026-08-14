@@ -26,3 +26,4 @@ dist-ssr
 # Environment variables (環境變數)機密資訊，避免上傳到 GitHub
 .env.local
 .vercel
+.env*

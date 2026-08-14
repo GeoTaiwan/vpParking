@@ -2,8 +2,9 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>附近空車位地圖與導航</title>
+    <!-- 針對行動裝置優化，防止點擊地圖時意外縮放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>附近車位即時地圖與導航</title>
     <!-- 引入 Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     
@@ -11,42 +12,56 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body { background-color: #f8f9fa; }
-        /* 設定地圖容器的高度與樣式 */
+        body { 
+            background-color: #f8f9fa; 
+            overflow-x: hidden; /* 防止手機橫向滾動 */
+        }
+        /* 將地圖設定為佔滿剩餘畫面，呈現 App 般的體驗 */
         #map-container {
-            height: 65vh; 
+            height: calc(100vh - 180px); 
             width: 100%;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            display: none; /* 初始隱藏，讀取完才顯示 */
+            display: none;
             z-index: 1;
         }
         #loading { display: none; }
+        
+        /* 自訂按鈕陰影與點擊效果 */
+        .btn-custom {
+            transition: transform 0.1s ease-in-out;
+        }
+        .btn-custom:active {
+            transform: scale(0.96);
+        }
     </style>
 </head>
 <body>
-    <div class="container my-4">
-        <h2 class="text-center mb-4 fw-bold text-primary">附近空車位地圖與導航</h2>
+    <div class="container-fluid my-3 px-3">
+        <h3 class="text-center mb-3 fw-bold text-primary">附近車位地圖</h3>
         
-        <div class="text-center mb-4">
-            <button id="findParkingBtn" class="btn btn-primary btn-lg px-4 rounded-pill shadow-sm">
-                📍 掃描附近空車位 (500公尺內)
+        <div class="text-center mb-3">
+            <button id="findParkingBtn" class="btn btn-primary btn-lg w-100 btn-custom rounded-pill shadow-sm fs-5">
+                📍 掃描 500m 內車位
             </button>
         </div>
 
         <!-- 載入中提示 -->
-        <div id="loading" class="text-center mb-4">
-            <div class="spinner-border text-primary" role="status">
+        <div id="loading" class="text-center mb-4 mt-5">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
                 <span class="visually-hidden">載入中...</span>
             </div>
-            <p class="mt-2 text-muted fw-bold">正在定位並搜尋即時車位，請稍候...</p>
+            <p class="mt-3 text-muted fw-bold">正在定位並搜尋即時車位...</p>
         </div>
 
         <!-- 錯誤訊息顯示區 -->
         <div id="error-message" class="alert alert-danger d-none shadow-sm" role="alert"></div>
 
         <!-- 結果統計文字 -->
-        <h5 class="mb-3 text-center text-secondary d-none" id="result-summary"></h5>
+        <div class="d-flex justify-content-between align-items-center mb-2 px-1 d-none" id="result-summary-container">
+            <span class="text-secondary fw-bold" id="result-summary"></span>
+            <small class="text-muted">🟢空位 🔴佔用</small>
+        </div>
         
         <!-- 地圖顯示區 -->
         <div id="map-container"></div>
@@ -56,11 +71,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // 全域變數用來儲存地圖實例
         let map = null;
         let markersLayer = new L.LayerGroup();
 
-        // 計算兩點經緯度距離 (Haversine 公式)
+        // 距離計算公式
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371e3; 
             const φ1 = lat1 * Math.PI / 180;
@@ -74,33 +88,32 @@
             return Math.round(R * c); 
         }
 
-        // 初始化或重設地圖
+        // 初始化地圖
         function initMap(lat, lon) {
             document.getElementById('map-container').style.display = 'block';
 
             if (!map) {
-                // 首次建立地圖
-                map = L.map('map-container').setView([lat, lon], 16);
+                map = L.map('map-container', { zoomControl: false }).setView([lat, lon], 17);
+                L.control.zoom({ position: 'bottomright' }).addTo(map); // 將縮放按鈕移到右下角便於單手操作
                 
-                // 載入 OpenStreetMap 免費圖資
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    attribution: '&copy; OpenStreetMap'
                 }).addTo(map);
 
                 markersLayer.addTo(map);
             } else {
-                // 如果地圖已存在，清除舊標記並重新定位
                 markersLayer.clearLayers();
-                map.setView([lat, lon], 16);
+                map.setView([lat, lon], 17);
             }
 
-            // 標示使用者的目前位置
+            // 使用者定位點改為藍色，與車位做出區隔
             const userMarker = L.circleMarker([lat, lon], {
-                color: '#dc3545',
-                fillColor: '#f8d7da',
-                fillOpacity: 0.8,
+                color: '#0d6efd',     // 藍色邊框
+                fillColor: '#9ec5fe', // 淺藍填充
+                fillOpacity: 1,
+                weight: 3,
                 radius: 8
-            }).bindPopup('<b>📍 您的所在位置</b>').openPopup();
+            }).bindPopup('<b class="text-primary">📍 您的所在位置</b>').openPopup();
             
             markersLayer.addLayer(userMarker);
         }
@@ -109,14 +122,14 @@
             const btn = document.getElementById('findParkingBtn');
             const loading = document.getElementById('loading');
             const errorMsg = document.getElementById('error-message');
+            const summaryContainer = document.getElementById('result-summary-container');
             const summary = document.getElementById('result-summary');
             const mapContainer = document.getElementById('map-container');
 
-            // UI 狀態切換
             btn.disabled = true;
             loading.style.display = 'block';
             errorMsg.classList.add('d-none');
-            summary.classList.add('d-none');
+            summaryContainer.classList.add('d-none');
             if(map) markersLayer.clearLayers();
 
             try {
@@ -130,7 +143,6 @@
                 const userLon = position.coords.longitude;
                 const searchRadius = 500;
 
-                // 初始化地圖視角
                 initMap(userLat, userLon);
 
                 // 2. 呼叫後端 API
@@ -140,60 +152,98 @@
                 
                 const mergedData = await response.json();
 
-                // 3. 篩選資料並記錄經緯度
-                let availableSpots = [];
+                // 3. 收集所有車位並統計
+                let allNearbySpots = [];
+                let emptyCount = 0;
+
                 mergedData.forEach(spot => {
-                    if (spot.SpotStatus === 1 && spot.Position) {
+                    if (spot.Position) {
                         const spotLat = spot.Position.PositionLat;
                         const spotLon = spot.Position.PositionLon;
                         const distance = getDistance(userLat, userLon, spotLat, spotLon);
                         
                         if (distance <= searchRadius) {
-                            availableSpots.push({
+                            if (spot.SpotStatus === 1) emptyCount++;
+                            allNearbySpots.push({
                                 id: spot.ParkingSpotID,
                                 distance: distance,
                                 lat: spotLat,
-                                lon: spotLon
+                                lon: spotLon,
+                                status: spot.SpotStatus
                             });
                         }
                     }
                 });
 
-                // 4. 更新文字統計
-                summary.innerText = `在您半徑 ${searchRadius} 公尺內，共找到 ${availableSpots.length} 個空車位`;
-                summary.classList.remove('d-none');
+                // 4. 更新統計文字
+                summary.innerText = `找到 ${emptyCount} 個空車位 (共 ${allNearbySpots.length} 格)`;
+                summaryContainer.classList.remove('d-none');
 
-                // 5. 將車位繪製到地圖上
-                availableSpots.forEach(spot => {
-                    // 產生 Google Maps 導航網址 (帶入終點經緯度)
+                // 5. 繪製圓圈標記
+                allNearbySpots.forEach(spot => {
+                    let markerColor, markerFillColor, statusText, navButtonHtml;
                     const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${spot.lat},${spot.lon}`;
 
-                    // 設計氣泡框內容
+                    // 判斷車位狀態給予不同顏色與彈出內容
+                    if (spot.status === 1) {
+                        markerColor = '#198754';     // 綠色
+                        markerFillColor = '#d1e7dd';
+                        statusText = '<span class="text-success fw-bold">可停空位</span>';
+                        navButtonHtml = `
+                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-success w-100 shadow-sm mt-2">
+                                🚗 導航前往
+                            </a>`;
+                    } else if (spot.status === 2) {
+                        markerColor = '#dc3545';     // 紅色
+                        markerFillColor = '#f8d7da';
+                        statusText = '<span class="text-danger fw-bold">已佔用</span>';
+                        // 已佔用不強制隱藏導航，但改為次要按鈕樣式
+                        navButtonHtml = `
+                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                                路線參考
+                            </a>`;
+                    } else {
+                        markerColor = '#6c757d';     // 灰色 (未知狀態)
+                        markerFillColor = '#e2e3e5';
+                        statusText = '<span class="text-secondary fw-bold">狀態未知</span>';
+                        navButtonHtml = `
+                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-outline-secondary w-100 mt-2">
+                                路線參考
+                            </a>`;
+                    }
+
+                    // 氣泡框 HTML 結構
                     const popupContent = `
-                        <div class="text-center p-1" style="min-width: 140px;">
-                            <h6 class="fw-bold mb-1 text-primary">車位編號: ${spot.id}</h6>
-                            <p class="mb-2 text-secondary small">距離: ${spot.distance} 公尺</p>
-                            <a href="${googleMapsUrl}" target="_blank" class="btn btn-sm btn-success w-100 shadow-sm">
-                                🚗 導航 Kia Stonic 前往
-                            </a>
+                        <div class="text-center p-1" style="min-width: 130px;">
+                            <h6 class="fw-bold mb-1">編號: ${spot.id}</h6>
+                            <div class="mb-1">${statusText}</div>
+                            <small class="text-muted d-block">距離: ${spot.distance} m</small>
+                            ${navButtonHtml}
                         </div>
                     `;
 
-                    // 加入標記
-                    const marker = L.marker([spot.lat, spot.lon]).bindPopup(popupContent);
+                    // 建立 CircleMarker
+                    const marker = L.circleMarker([spot.lat, spot.lon], {
+                        color: markerColor,
+                        fillColor: markerFillColor,
+                        fillOpacity: 0.9,
+                        weight: 2,
+                        radius: 7 // 圓圈大小
+                    }).bindPopup(popupContent);
+
                     markersLayer.addLayer(marker);
                 });
 
                 // 自動縮放地圖以包含所有標記
-                if (availableSpots.length > 0) {
-                    const bounds = L.latLngBounds(availableSpots.map(s => [s.lat, s.lon]));
-                    bounds.extend([userLat, userLon]); // 把使用者位置也包含進去
-                    map.fitBounds(bounds, { padding: [30, 30] });
+                if (allNearbySpots.length > 0) {
+                    const bounds = L.latLngBounds(allNearbySpots.map(s => [s.lat, s.lon]));
+                    bounds.extend([userLat, userLon]);
+                    map.fitBounds(bounds, { padding: [40, 40] });
                 }
 
             } catch (error) {
                 console.error(error);
-                errorMsg.innerText = `發生錯誤：${error.message} (請確認定位權限或 API 狀態)`;
+                errorMsg.innerText = `發生錯誤：${error.message} (請確認定位權限)`;
                 errorMsg.classList.remove('d-none');
                 mapContainer.style.display = 'none';
             } finally {

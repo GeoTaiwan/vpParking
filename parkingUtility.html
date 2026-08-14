@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+
+    
+    <script>
+        async function getParkingInfo(lat, lon) {
+            try {
+                // 直接呼叫自己的 Vercel API
+                const response = await fetch(`/api/parking?lat=${lat}&lon=${lon}`);
+                const data = await response.json();
+                console.log("從自己 API 拿到的乾淨車位資料：", data);
+
+                // 接下來就可以把 data 丟給地圖去渲染標記了
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+
+</html>

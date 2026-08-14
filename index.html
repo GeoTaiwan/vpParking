@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>附近路邊停車位查詢</title>
+
+  <!-- 1. 載入 Leaflet 的 CSS (必須放在前面) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  
+  <style>
+    /* 確保網頁沒有多餘邊距，讓地圖能填滿畫面 */
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+    }
+    
+    /* 2. 這是非常關鍵的「地圖容器」，必須設定高度！ */
+    #map {
+      height: 100vh; /* 填滿整個視窗高度 */
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 3. 地圖會被渲染在這個 div 裡面 -->
+  <div id="map"></div>
+
+  <!-- 4. 載入 Leaflet 的 JavaScript (必須放在 CSS 之後) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  
+  <!-- 5. 載入你自己寫的邏輯 (這支檔案稍後建立) -->
+  <script src="script.js"></script>
+  
+</body>
+</html>
